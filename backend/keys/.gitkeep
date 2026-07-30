@@ -1,0 +1,2 @@
+# Generar claves locales (no commitear *.pem)
+# node -e "..."

@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+
+jobs:
+  lint-test-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install
+        run: npm install
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lint backend
+        run: npm run lint -w backend
+
+      - name: Test backend
+        run: npm run test -w backend
+
+      - name: Audit high
+        run: npm audit --audit-level=high || true
+
+      - name: Build backend
+        run: npm run build -w backend
+
+      - name: Lint frontend
+        run: npm run lint -w frontend
+
+      - name: Build frontend
+        run: npm run build -w frontend
