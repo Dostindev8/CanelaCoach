@@ -5,6 +5,7 @@ import { Evaluacion } from '../models/Evaluacion.js';
 import { requireAuth } from '../middlewares/auth.js';
 import { asyncHandler } from '../middlewares/errorHandler.js';
 import { cacheGet, cacheSet } from '../config/redis.js';
+import { entrenadorScope, isAdmin } from '../utils/accessScope.js';
 
 export const dashboardRouter = Router();
 dashboardRouter.use(requireAuth);
@@ -12,21 +13,22 @@ dashboardRouter.use(requireAuth);
 dashboardRouter.get(
   '/resumen',
   asyncHandler(async (req: Request, res: Response) => {
-    const cacheKey = `dashboard:${req.entrenadorId}`;
+    const cacheKey = `dashboard:${isAdmin(req) ? "admin" : req.entrenadorId}`;
     const cached = await cacheGet(cacheKey);
     if (cached) {
       return res.json({ ok: true, data: cached, cached: true });
     }
 
+    const scope = entrenadorScope(req);
     const entrenadorId = req.entrenadorId!;
     const hace30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     const [totalClientes, clientesActivos, totalEvaluaciones, ultimasEval] = await Promise.all([
-      Cliente.countDocuments({ entrenadorId }),
-      Cliente.countDocuments({ entrenadorId, activo: true }),
-      Evaluacion.countDocuments({ entrenadorId }),
+      Cliente.countDocuments({ ...scope }),
+      Cliente.countDocuments({ ...scope, activo: true }),
+      Evaluacion.countDocuments({ ...scope }),
       Evaluacion.aggregate([
-        { $match: { entrenadorId: new Types.ObjectId(entrenadorId) } },
+        { $match: isAdmin(req) ? {} : { entrenadorId: new Types.ObjectId(entrenadorId) } },
         { $sort: { fecha: -1 } },
         {
           $group: {
@@ -41,7 +43,7 @@ dashboardRouter.get(
     const clienteIds = ultimasEval.map((u: { _id: unknown }) => u._id);
     const clientesMap = await Cliente.find({
       _id: { $in: clienteIds },
-      entrenadorId,
+      ...scope,
       activo: true,
     })
       .select('nombre codigoCliente fotoPerfilUrl')
@@ -79,7 +81,7 @@ dashboardRouter.get(
 
     // Clients with zero evaluations
     const sinEval = await Cliente.find({
-      entrenadorId,
+      ...scope,
       activo: true,
       _id: { $nin: clienteIds },
     })
@@ -88,12 +90,12 @@ dashboardRouter.get(
       .lean();
 
     const evaluacionesMes = await Evaluacion.countDocuments({
-      entrenadorId,
+      ...scope,
       fecha: { $gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) },
     });
 
     const scoreAgg = await Evaluacion.aggregate([
-      { $match: { entrenadorId: new Types.ObjectId(entrenadorId), 'scoreFisico.valor': { $ne: null } } },
+      { $match: { ...(isAdmin(req) ? {} : { entrenadorId: new Types.ObjectId(entrenadorId) }), 'scoreFisico.valor': { $ne: null } } },
       { $sort: { fecha: -1 } },
       {
         $group: {

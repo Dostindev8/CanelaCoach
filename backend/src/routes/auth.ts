@@ -16,6 +16,7 @@ import { parseBody, registroSchema, loginSchema, mfaVerificarSchema } from '../v
 import { registrarAuditoria } from '../middlewares/audit.js';
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../middlewares/auth.js';
+import { env } from '../config/env.js';
 
 authenticator.options = { window: 1 }; // ±30s
 
@@ -36,7 +37,7 @@ authRouter.post(
       email: data.email.toLowerCase(),
       passwordHash,
       rol: data.rol,
-      mfaObligatorio: data.rol === 'admin',
+      mfaObligatorio: data.rol === 'admin' && env.nodeEnv === 'production',
     });
 
     res.status(201).json({

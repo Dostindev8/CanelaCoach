@@ -41,9 +41,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         mfaHabilitado: u.mfaHabilitado,
         photoUrl: u.photoUrl ?? null,
       });
+      // Keep admin MFA onboarding state after refresh/reload
+      if (u.mfaObligatorio && !u.mfaHabilitado) {
+        setMfaSetupRequired(true);
+      } else {
+        setMfaSetupRequired(false);
+      }
     } catch {
       // API down / no session — stay logged out without crashing UI
       setUser(null);
+      setMfaSetupRequired(false);
     }
   };
 

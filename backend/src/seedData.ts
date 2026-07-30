@@ -20,7 +20,7 @@ export async function ensureSeedData(): Promise<void> {
     email: env.seed.adminEmail,
     passwordHash: adminHash,
     rol: 'admin',
-    mfaObligatorio: true,
+    mfaObligatorio: env.nodeEnv === 'production',
     mfaHabilitado: false,
   });
 
@@ -142,4 +142,47 @@ export async function syncDemoCoachProfile(): Promise<void> {
     { email: env.seed.entrenadorEmail.toLowerCase() },
     { $set: { nombre: 'Abraham Canela' } }
   );
+}
+
+/**
+ * Ensures admin can always sign in locally: sync password from SEED_*,
+ * clear MFA gate outside production, keep rol/activo.
+ */
+export async function ensureAdminAccess(): Promise<void> {
+  const email = env.seed.adminEmail.toLowerCase();
+  const passwordHash = await argon2.hash(env.seed.adminPassword, { type: argon2.argon2id });
+  const existing = await Entrenador.findOne({ email }).select('_id');
+
+  if (!existing) {
+    await Entrenador.create({
+      nombre: 'Admin Canela',
+      email,
+      passwordHash,
+      rol: 'admin',
+      mfaObligatorio: env.nodeEnv === 'production',
+      mfaHabilitado: false,
+      activo: true,
+    });
+    console.log(`[seed] admin creado → ${email}`);
+    return;
+  }
+
+  const $set: Record<string, unknown> = {
+    rol: 'admin',
+    activo: true,
+    nombre: 'Admin Canela',
+    limiteClientes: 10_000,
+  };
+
+  if (env.nodeEnv === 'production') {
+    $set.mfaObligatorio = true;
+  } else {
+    $set.mfaObligatorio = false;
+    $set.passwordHash = passwordHash;
+  }
+
+  await Entrenador.updateOne({ _id: existing._id }, { $set });
+  if (env.nodeEnv !== 'production') {
+    console.log(`[seed] admin listo (sin MFA obligatorio en ${env.nodeEnv}) → ${email}`);
+  }
 }

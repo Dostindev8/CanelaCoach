@@ -9,13 +9,18 @@ import { paramId } from '../utils/params.js';
 import { registrarAuditoria } from '../middlewares/audit.js';
 import { pdfExportRateLimit } from '../middlewares/rateLimit.js';
 import { generarProtocoloPDF } from '../services/pdfProtocolo.js';
+import { entrenadorScope, isAdmin } from '../utils/accessScope.js';
 
 export const protocolsRouter = Router({ mergeParams: true });
 protocolsRouter.use(requireAuth);
 protocolsRouter.use(requireMfaIfMandatory);
 
-async function assertClienteOwn(clienteId: string, entrenadorId: string) {
-  const cliente = await Cliente.findOne({ _id: clienteId, entrenadorId, activo: true });
+async function assertClienteOwn(clienteId: string, req: import('express').Request) {
+  const cliente = await Cliente.findOne(
+    isAdmin(req)
+      ? { _id: clienteId, activo: true }
+      : { _id: clienteId, ...entrenadorScope(req), activo: true }
+  );
   if (!cliente) throw new AppError('Cliente no encontrado', 404);
   return cliente;
 }
@@ -24,10 +29,10 @@ protocolsRouter.get(
   '/',
   asyncHandler(async (req: Request, res: Response) => {
     const clienteId = paramId(req.params.clienteId);
-    await assertClienteOwn(clienteId, req.entrenadorId!);
+    await assertClienteOwn(clienteId, req);
     const items = await Protocol.find({
       clienteId,
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
       deletedAt: null,
     })
       .sort({ version: -1 })
@@ -40,10 +45,10 @@ protocolsRouter.get(
   '/active',
   asyncHandler(async (req: Request, res: Response) => {
     const clienteId = paramId(req.params.clienteId);
-    await assertClienteOwn(clienteId, req.entrenadorId!);
+    await assertClienteOwn(clienteId, req);
     const active = await Protocol.findOne({
       clienteId,
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
       status: 'active',
       deletedAt: null,
     }).lean();
@@ -55,17 +60,17 @@ protocolsRouter.post(
   '/',
   asyncHandler(async (req: Request, res: Response) => {
     const clienteId = paramId(req.params.clienteId);
-    await assertClienteOwn(clienteId, req.entrenadorId!);
+    const cliente = await assertClienteOwn(clienteId, req);
     const data = parseBody(protocolSchema, req.body);
 
-    const last = await Protocol.findOne({ clienteId, entrenadorId: req.entrenadorId })
+    const last = await Protocol.findOne({ clienteId, ...entrenadorScope(req) })
       .sort({ version: -1 })
       .select('version')
       .lean();
 
     const protocol = await Protocol.create({
       clienteId,
-      entrenadorId: req.entrenadorId,
+      entrenadorId: cliente.entrenadorId,
       createdBy: req.entrenadorId,
       version: (last?.version || 0) + 1,
       status: 'draft',
@@ -104,13 +109,13 @@ protocolsRouter.patch(
   '/:id',
   asyncHandler(async (req: Request, res: Response) => {
     const clienteId = paramId(req.params.clienteId);
-    await assertClienteOwn(clienteId, req.entrenadorId!);
+    await assertClienteOwn(clienteId, req);
     const data = parseBody(protocolSchema, req.body);
 
     const protocol = await Protocol.findOne({
       _id: paramId(req.params.id),
       clienteId,
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
       deletedAt: null,
     });
     if (!protocol) throw new AppError('Protocolo no encontrado', 404);
@@ -206,11 +211,11 @@ protocolsRouter.post(
   '/:id/publish',
   asyncHandler(async (req: Request, res: Response) => {
     const clienteId = paramId(req.params.clienteId);
-    await assertClienteOwn(clienteId, req.entrenadorId!);
+    await assertClienteOwn(clienteId, req);
     const protocol = await Protocol.findOne({
       _id: paramId(req.params.id),
       clienteId,
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
       status: 'draft',
       deletedAt: null,
     });
@@ -219,7 +224,7 @@ protocolsRouter.post(
     await Protocol.updateMany(
       {
         clienteId,
-        entrenadorId: req.entrenadorId,
+        ...entrenadorScope(req),
         status: 'active',
         _id: { $ne: protocol._id },
       },
@@ -248,11 +253,11 @@ protocolsRouter.get(
   pdfExportRateLimit,
   asyncHandler(async (req: Request, res: Response) => {
     const clienteId = paramId(req.params.clienteId);
-    await assertClienteOwn(clienteId, req.entrenadorId!);
+    await assertClienteOwn(clienteId, req);
     const protocol = await Protocol.findOne({
       _id: paramId(req.params.id),
       clienteId,
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
       deletedAt: null,
     });
     if (!protocol) throw new AppError('Protocolo no encontrado', 404);

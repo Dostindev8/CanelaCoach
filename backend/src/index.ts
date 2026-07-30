@@ -25,7 +25,7 @@ import { portalRouter } from './routes/portal.js';
 import { protocolsRouter, supplementCatalogRouter } from './routes/protocols.js';
 import { startReporteWorker } from './workers/worker-reportes.js';
 import { verifyToken } from './middlewares/auth.js';
-import { ensureSeedData, syncDemoCoachProfile } from './seedData.js';
+import { ensureSeedData, syncDemoCoachProfile, ensureAdminAccess } from './seedData.js';
 import { ensureSupplementCatalogSeed } from './seedSupplements.js';
 
 assertCriticalEnv();
@@ -115,15 +115,16 @@ app.get('/api/health', (_req, res) => {
 
 app.use('/api/auth', authRouter);
 app.use('/api/clientes', clientesRouter);
-app.use('/api', evaluacionesRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/agente', agenteRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/planes', planesRouter);
 app.use('/api/citas', citasRouter);
 app.use('/api/portal', portalRouter);
-app.use('/api/clientes/:clienteId/protocols', protocolsRouter);
 app.use('/api/supplement-catalog', supplementCatalogRouter);
+app.use('/api/clientes/:clienteId/protocols', protocolsRouter);
+// Evaluaciones last: mounted at /api with shared middlewares — must not shadow other routers
+app.use('/api', evaluacionesRouter);
 
 configureFrontendHosting(app);
 
@@ -136,6 +137,7 @@ export async function bootstrap(): Promise<http.Server> {
   await ensureSeedData();
   await ensureSupplementCatalogSeed();
   await syncDemoCoachProfile();
+  await ensureAdminAccess();
   if (env.nodeEnv !== 'production') {
     const n = await limpiarTodosLosLockouts();
     if (n > 0) console.log(`[auth] lockouts limpiados en dev: ${n}`);

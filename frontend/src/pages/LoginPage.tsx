@@ -109,8 +109,7 @@ export function LoginPage() {
     mode: 'onSubmit',
     reValidateMode: 'onSubmit',
     defaultValues: {
-      // Dev UX: email de demo sin password (nunca hardcodear secretos en el bundle)
-      email: import.meta.env.DEV ? 'entrenador@canelacoach.com' : '',
+      email: import.meta.env.DEV ? 'admin@canelacoach.com' : '',
       password: '',
       remember: true,
       totpCode: '',
@@ -174,7 +173,7 @@ export function LoginPage() {
             label="Email"
             type="email"
             autoComplete="username"
-            placeholder="entrenador@canelacoach.com"
+            placeholder="admin@canelacoach.com"
             icon={<IconMail />}
             error={errors.email?.message}
             {...register('email')}

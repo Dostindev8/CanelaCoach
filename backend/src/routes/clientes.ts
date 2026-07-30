@@ -16,12 +16,17 @@ import { registrarAuditoria } from '../middlewares/audit.js';
 import { cacheDel } from '../config/redis.js';
 import { aplicarCuestionarioACliente } from '../services/syncCuestionarioCliente.js';
 import { paramId } from '../utils/params.js';
+import { entrenadorScope, isAdmin } from '../utils/accessScope.js';
 
 export const clientesRouter = Router();
 clientesRouter.use(requireAuth);
 
-async function assertClienteOwn(clienteId: string, entrenadorId: string) {
-  const cliente = await Cliente.findOne({ _id: clienteId, entrenadorId });
+async function assertClienteOwn(clienteId: string, req: Request) {
+  const cliente = await Cliente.findOne(
+    isAdmin(req)
+      ? { _id: clienteId }
+      : { _id: clienteId, entrenadorId: req.entrenadorId }
+  );
   if (!cliente) throw new AppError('Cliente no encontrado', 404);
   return cliente;
 }
@@ -35,7 +40,7 @@ clientesRouter.get(
     const activo = req.query.activo === undefined ? true : req.query.activo === 'true';
 
     const filter: Record<string, unknown> = {
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
       activo,
     };
     if (q) {
@@ -104,11 +109,8 @@ clientesRouter.get(
   '/:id/cuestionario-ingreso',
   asyncHandler(async (req: Request, res: Response) => {
     const clienteId = paramId(req.params.id);
-    await assertClienteOwn(clienteId, req.entrenadorId!);
-    const doc = await CuestionarioIngreso.findOne({
-      clienteId,
-      entrenadorId: req.entrenadorId,
-    });
+    await assertClienteOwn(clienteId, req);
+    const doc = await CuestionarioIngreso.findOne({ clienteId, ...entrenadorScope(req) });
     if (!doc) {
       return res.json({ ok: true, data: null });
     }
@@ -120,7 +122,7 @@ clientesRouter.post(
   '/:id/cuestionario-ingreso',
   asyncHandler(async (req: Request, res: Response) => {
     const clienteId = paramId(req.params.id);
-    const cliente = await assertClienteOwn(clienteId, req.entrenadorId!);
+    const cliente = await assertClienteOwn(clienteId, req);
     const existing = await CuestionarioIngreso.findOne({ clienteId });
     if (existing) {
       throw new AppError(
@@ -142,7 +144,7 @@ clientesRouter.post(
     const doc = await CuestionarioIngreso.create({
       ...data,
       clienteId,
-      entrenadorId: req.entrenadorId,
+      entrenadorId: cliente.entrenadorId,
       consentimientoInformado: {
         ...consentimiento,
         fechaConsentimiento: consentimiento.fechaConsentimiento || new Date(),
@@ -170,11 +172,8 @@ clientesRouter.put(
   '/:id/cuestionario-ingreso',
   asyncHandler(async (req: Request, res: Response) => {
     const clienteId = paramId(req.params.id);
-    const cliente = await assertClienteOwn(clienteId, req.entrenadorId!);
-    const doc = await CuestionarioIngreso.findOne({
-      clienteId,
-      entrenadorId: req.entrenadorId,
-    });
+    const cliente = await assertClienteOwn(clienteId, req);
+    const doc = await CuestionarioIngreso.findOne({ clienteId, ...entrenadorScope(req) });
     if (!doc) throw new AppError('Cuestionario no encontrado. Usa POST para crearlo.', 404);
 
     const data = parseBody(cuestionarioIngresoSchema, req.body);
@@ -207,7 +206,7 @@ clientesRouter.put(
 clientesRouter.get(
   '/:id',
   asyncHandler(async (req: Request, res: Response) => {
-    const cliente = await Cliente.findOne({ _id: req.params.id, entrenadorId: req.entrenadorId });
+    const cliente = await Cliente.findOne(isAdmin(req) ? { _id: req.params.id } : { _id: req.params.id, entrenadorId: req.entrenadorId });
     if (!cliente) throw new AppError('Cliente no encontrado', 404);
 
     const evaluaciones = await Evaluacion.find({
@@ -247,7 +246,7 @@ clientesRouter.put(
   '/:id',
   asyncHandler(async (req: Request, res: Response) => {
     const data = parseBody(clienteSchema.partial(), req.body);
-    const cliente = await Cliente.findOne({ _id: req.params.id, entrenadorId: req.entrenadorId });
+    const cliente = await Cliente.findOne(isAdmin(req) ? { _id: req.params.id } : { _id: req.params.id, entrenadorId: req.entrenadorId });
     if (!cliente) throw new AppError('Cliente no encontrado', 404);
 
     Object.assign(cliente, data);
@@ -271,17 +270,17 @@ clientesRouter.get(
   '/:id/expediente',
   asyncHandler(async (req: Request, res: Response) => {
     const clienteId = paramId(req.params.id);
-    const cliente = await assertClienteOwn(clienteId, req.entrenadorId!);
+    const cliente = await assertClienteOwn(clienteId, req);
     const [evaluaciones, planes, citas, reportes, cuestionario] = await Promise.all([
-      Evaluacion.find({ clienteId, entrenadorId: req.entrenadorId })
+      Evaluacion.find({ clienteId, ...entrenadorScope(req) })
         .sort({ fecha: -1 })
         .lean(),
-      PlanAsignacion.find({ clienteId, entrenadorId: req.entrenadorId, activo: true })
+      PlanAsignacion.find({ clienteId, ...entrenadorScope(req), activo: true })
         .populate('planId')
         .sort({ asignadoEn: -1 })
         .lean(),
-      Cita.find({ clienteId, entrenadorId: req.entrenadorId }).sort({ fecha: -1 }).lean(),
-      Report.find({ clienteId, entrenadorId: req.entrenadorId }).sort({ generadoEn: -1 }).lean(),
+      Cita.find({ clienteId, ...entrenadorScope(req) }).sort({ fecha: -1 }).lean(),
+      Report.find({ clienteId, ...entrenadorScope(req) }).sort({ generadoEn: -1 }).lean(),
       CuestionarioIngreso.findOne({ clienteId }).lean(),
     ]);
 
@@ -349,7 +348,7 @@ clientesRouter.get(
 clientesRouter.delete(
   '/:id',
   asyncHandler(async (req: Request, res: Response) => {
-    const cliente = await Cliente.findOne({ _id: req.params.id, entrenadorId: req.entrenadorId });
+    const cliente = await Cliente.findOne(isAdmin(req) ? { _id: req.params.id } : { _id: req.params.id, entrenadorId: req.entrenadorId });
     if (!cliente) throw new AppError('Cliente no encontrado', 404);
 
     cliente.activo = false;

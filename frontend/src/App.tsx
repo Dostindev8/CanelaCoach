@@ -22,8 +22,9 @@ const qc = new QueryClient({
 });
 
 function PublicOnly({ children }: { children: ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, mfaSetupRequired } = useAuth();
   if (loading) return null;
+  if (user && mfaSetupRequired) return <Navigate to="/mfa-setup" replace />;
   if (user) return <Navigate to="/" replace />;
   return <>{children}</>;
 }

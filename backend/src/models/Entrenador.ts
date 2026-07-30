@@ -41,7 +41,8 @@ const EntrenadorSchema = new Schema<IEntrenador>(
 );
 
 EntrenadorSchema.pre('save', function (next) {
-  if (this.rol === 'admin') {
+  // MFA obligatorio para admin solo en producción (local/QA sin TOTP bloqueaba el panel)
+  if (this.rol === 'admin' && process.env.NODE_ENV === 'production') {
     this.mfaObligatorio = true;
   }
   if (this.isModified('mfaSecret') && this.mfaSecret && !this.mfaSecret.startsWith('enc:')) {

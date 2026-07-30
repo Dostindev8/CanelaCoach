@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { Cita } from '../models/Cita.js';
 import { Cliente } from '../models/Cliente.js';
 import { requireAuth } from '../middlewares/auth.js';
+import { entrenadorScope } from '../utils/accessScope.js';
 import { AppError, asyncHandler } from '../middlewares/errorHandler.js';
 import { parseBody, citaSchema } from '../validators/schemas.js';
 import { paramId } from '../utils/params.js';
@@ -14,7 +15,7 @@ citasRouter.get(
   asyncHandler(async (req: Request, res: Response) => {
     const from = req.query.from ? new Date(String(req.query.from)) : undefined;
     const to = req.query.to ? new Date(String(req.query.to)) : undefined;
-    const q: Record<string, unknown> = { entrenadorId: req.entrenadorId };
+    const q: Record<string, unknown> = { ...entrenadorScope(req) };
     if (from || to) {
       q.fecha = {};
       if (from) (q.fecha as Record<string, Date>).$gte = from;
@@ -34,13 +35,13 @@ citasRouter.post(
     const data = parseBody(citaSchema, req.body);
     const cliente = await Cliente.findOne({
       _id: data.clienteId,
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
       activo: true,
     });
     if (!cliente) throw new AppError('Cliente no encontrado', 404);
 
     const cita = await Cita.create({
-      entrenadorId: req.entrenadorId,
+      entrenadorId: req.entrenadorId!,
       clienteId: data.clienteId,
       fecha: data.fecha,
       notas: data.notas,
@@ -55,7 +56,7 @@ citasRouter.put(
   asyncHandler(async (req: Request, res: Response) => {
     const data = parseBody(citaSchema.partial(), req.body);
     const cita = await Cita.findOneAndUpdate(
-      { _id: paramId(req.params.id), entrenadorId: req.entrenadorId },
+      { _id: paramId(req.params.id), ...entrenadorScope(req) },
       { $set: data },
       { new: true }
     );
@@ -68,7 +69,7 @@ citasRouter.delete(
   '/:id',
   asyncHandler(async (req: Request, res: Response) => {
     const cita = await Cita.findOneAndUpdate(
-      { _id: paramId(req.params.id), entrenadorId: req.entrenadorId },
+      { _id: paramId(req.params.id), ...entrenadorScope(req) },
       { $set: { estado: 'cancelada' } },
       { new: true }
     );

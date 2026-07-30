@@ -26,6 +26,7 @@ import { pdfExportRateLimit } from '../middlewares/rateLimit.js';
 import { generarEvaluacionFisicaPDF } from '../services/pdfEvaluacionFisica.js';
 import { cifrarCampo } from '../utils/campoCifrado.js';
 import { kgToLb, lbToKg, detectarDiscrepanciaBascula } from '../theme/canelaCoach.tokens.js';
+import { entrenadorScope, isAdmin } from '../utils/accessScope.js';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -39,8 +40,12 @@ export const evaluacionesRouter = Router();
 evaluacionesRouter.use(requireAuth);
 evaluacionesRouter.use(requireMfaIfMandatory);
 
-async function assertClienteOwn(clienteId: string, entrenadorId: string) {
-  const cliente = await Cliente.findOne({ _id: clienteId, entrenadorId, activo: true });
+async function assertClienteOwn(clienteId: string, req: Request) {
+  const cliente = await Cliente.findOne(
+    isAdmin(req)
+      ? { _id: clienteId, activo: true }
+      : { _id: clienteId, ...entrenadorScope(req), activo: true }
+  );
   if (!cliente) throw new AppError('Cliente no encontrado', 404);
   return cliente;
 }
@@ -49,10 +54,10 @@ evaluacionesRouter.get(
   '/clientes/:clienteId/evaluaciones',
   asyncHandler(async (req: Request, res: Response) => {
     const clienteId = paramId(req.params.clienteId);
-    await assertClienteOwn(clienteId, req.entrenadorId!);
+    await assertClienteOwn(clienteId, req);
     const items = await Evaluacion.find({
       clienteId,
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
       activo: { $ne: false },
     })
       .sort({ fecha: -1 })
@@ -65,10 +70,10 @@ evaluacionesRouter.get(
   '/clientes/:clienteId/evaluaciones/trend',
   asyncHandler(async (req: Request, res: Response) => {
     const clienteId = paramId(req.params.clienteId);
-    await assertClienteOwn(clienteId, req.entrenadorId!);
+    await assertClienteOwn(clienteId, req);
     const items = await Evaluacion.find({
       clienteId,
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
       activo: { $ne: false },
     })
       .sort({ fecha: 1 })
@@ -95,10 +100,10 @@ evaluacionesRouter.get(
   '/clientes/:clienteId/evaluaciones/latest',
   asyncHandler(async (req: Request, res: Response) => {
     const clienteId = paramId(req.params.clienteId);
-    await assertClienteOwn(clienteId, req.entrenadorId!);
+    await assertClienteOwn(clienteId, req);
     const latest = await Evaluacion.findOne({
       clienteId,
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
       activo: { $ne: false },
     })
       .sort({ fecha: -1 })
@@ -115,7 +120,7 @@ evaluacionesRouter.post(
   '/clientes/:clienteId/evaluaciones',
   asyncHandler(async (req: Request, res: Response) => {
     const clienteId = paramId(req.params.clienteId);
-    const cliente = await assertClienteOwn(clienteId, req.entrenadorId!);
+    const cliente = await assertClienteOwn(clienteId, req);
     const data = parseBody(evaluacionSchema, req.body);
 
     const cuestionario = await CuestionarioIngreso.findOne({ clienteId }).lean();
@@ -193,7 +198,7 @@ evaluacionesRouter.post(
 
     const count = await Evaluacion.countDocuments({
       clienteId,
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
       activo: { $ne: false },
     });
 
@@ -218,7 +223,7 @@ evaluacionesRouter.post(
     const evaluacion = await Evaluacion.create({
       ...data,
       clienteId,
-      entrenadorId: req.entrenadorId,
+      entrenadorId: cliente.entrenadorId,
       tipo: data.tipo || (count === 0 ? 'inicial' : 'seguimiento'),
       fecha,
       resultadosCalculados: calc.resultadosCalculados,
@@ -264,8 +269,8 @@ evaluacionesRouter.get(
     if (!fromId || !toId) throw new AppError('Parámetros from y to requeridos', 400);
 
     const [fromEval, toEval] = await Promise.all([
-      Evaluacion.findOne({ _id: fromId, entrenadorId: req.entrenadorId, ...ACTIVA }).lean(),
-      Evaluacion.findOne({ _id: toId, entrenadorId: req.entrenadorId, ...ACTIVA }).lean(),
+      Evaluacion.findOne({ _id: fromId, ...entrenadorScope(req), ...ACTIVA }).lean(),
+      Evaluacion.findOne({ _id: toId, ...entrenadorScope(req), ...ACTIVA }).lean(),
     ]);
     if (!fromEval || !toEval) throw new AppError('Evaluación no encontrada', 404);
     if (String(fromEval.clienteId) !== String(toEval.clienteId)) {
@@ -291,7 +296,7 @@ evaluacionesRouter.get(
   asyncHandler(async (req: Request, res: Response) => {
     const evaluacion = await Evaluacion.findOne({
       _id: paramId(req.params.id),
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
       ...ACTIVA,
     });
     if (!evaluacion) throw new AppError('Evaluación no encontrada', 404);
@@ -315,7 +320,7 @@ evaluacionesRouter.put(
     const data = parseBody(evaluacionSchema, req.body);
     const evaluacion = await Evaluacion.findOne({
       _id: paramId(req.params.id),
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
       ...ACTIVA,
     });
     if (!evaluacion) throw new AppError('Evaluación no encontrada', 404);
@@ -413,7 +418,7 @@ evaluacionesRouter.delete(
   asyncHandler(async (req: Request, res: Response) => {
     const evaluacion = await Evaluacion.findOne({
       _id: paramId(req.params.id),
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
       activo: { $ne: false },
     });
     if (!evaluacion) throw new AppError('Evaluación no encontrada', 404);
@@ -440,14 +445,14 @@ evaluacionesRouter.get(
   asyncHandler(async (req: Request, res: Response) => {
     const evaluacion = await Evaluacion.findOne({
       _id: paramId(req.params.id),
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
     }).lean();
     if (!evaluacion) throw new AppError('Evaluación no encontrada', 404);
 
     const anterior = await Evaluacion.obtenerAnterior(evaluacion.clienteId, evaluacion.fecha);
     const historial = await Evaluacion.find({
       clienteId: evaluacion.clienteId,
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
       ...ACTIVA,
     })
       .sort({ fecha: 1 })
@@ -482,7 +487,7 @@ evaluacionesRouter.get(
 evaluacionesRouter.put(
   '/clientes/:clienteId/borrador',
   asyncHandler(async (req: Request, res: Response) => {
-    await assertClienteOwn(paramId(req.params.clienteId), req.entrenadorId!);
+    await assertClienteOwn(paramId(req.params.clienteId), req);
     const key = `evaluacion:borrador:${paramId(req.params.clienteId)}:${req.entrenadorId}`;
     await cacheSet(key, req.body, 24 * 60 * 60);
     res.json({ ok: true, data: { savedAt: new Date().toISOString() } });
@@ -492,7 +497,7 @@ evaluacionesRouter.put(
 evaluacionesRouter.get(
   '/clientes/:clienteId/borrador',
   asyncHandler(async (req: Request, res: Response) => {
-    await assertClienteOwn(paramId(req.params.clienteId), req.entrenadorId!);
+    await assertClienteOwn(paramId(req.params.clienteId), req);
     const key = `evaluacion:borrador:${paramId(req.params.clienteId)}:${req.entrenadorId}`;
     const draft = await cacheGet(key);
     res.json({ ok: true, data: draft });
@@ -502,7 +507,7 @@ evaluacionesRouter.get(
 evaluacionesRouter.delete(
   '/clientes/:clienteId/borrador',
   asyncHandler(async (req: Request, res: Response) => {
-    await assertClienteOwn(paramId(req.params.clienteId), req.entrenadorId!);
+    await assertClienteOwn(paramId(req.params.clienteId), req);
     const key = `evaluacion:borrador:${paramId(req.params.clienteId)}:${req.entrenadorId}`;
     await getCache().del(key);
     res.json({ ok: true });
@@ -539,7 +544,7 @@ evaluacionesRouter.post(
 
     const evaluacion = await Evaluacion.findOne({
       _id: paramId(req.params.id),
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
       ...ACTIVA,
     });
     if (!evaluacion) throw new AppError('Evaluación no encontrada', 404);
@@ -570,7 +575,7 @@ evaluacionesRouter.post(
   asyncHandler(async (req: Request, res: Response) => {
     const evaluacion = await Evaluacion.findOne({
       _id: paramId(req.params.id),
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
       activo: { $ne: false },
     });
     if (!evaluacion) throw new AppError('Evaluación no encontrada', 404);
@@ -591,7 +596,7 @@ evaluacionesRouter.get(
   asyncHandler(async (req: Request, res: Response) => {
     const evaluacion = await Evaluacion.findOne({
       _id: paramId(req.params.id),
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
       activo: { $ne: false },
     });
     if (!evaluacion) throw new AppError('Evaluación no encontrada', 404);
@@ -619,7 +624,7 @@ evaluacionesRouter.post(
   asyncHandler(async (req: Request, res: Response) => {
     const evaluacion = await Evaluacion.findOne({
       _id: paramId(req.params.id),
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
       ...ACTIVA,
     });
     if (!evaluacion) throw new AppError('Evaluación no encontrada', 404);
@@ -634,7 +639,7 @@ evaluacionesRouter.get(
   asyncHandler(async (req: Request, res: Response) => {
     const evaluacion = await Evaluacion.findOne({
       _id: paramId(req.params.id),
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
       ...ACTIVA,
     });
     if (!evaluacion) throw new AppError('Evaluación no encontrada', 404);
@@ -655,7 +660,7 @@ evaluacionesRouter.post(
   asyncHandler(async (req: Request, res: Response) => {
     const evaluacion = await Evaluacion.findOne({
       _id: paramId(req.params.id),
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
       ...ACTIVA,
     });
     if (!evaluacion) throw new AppError('Evaluación no encontrada', 404);
@@ -679,7 +684,7 @@ evaluacionesRouter.post(
     await Report.create({
       evaluacionId: evaluacion._id,
       clienteId: cliente._id,
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
       tipo: 'clinico',
       pdfUrl: evaluacion.reporte.pdfUrl,
       generadoEn: evaluacion.reporte.generadoEn || new Date(),
