@@ -4,37 +4,41 @@
 
 | Check | Resultado |
 |-------|-----------|
-| `frontend/tsconfig.json` `baseUrl` (TS 6) | ✅ Corregido — paths sin `baseUrl` |
-| Backend `tsc` + tests | ✅ 19/19 |
-| Frontend build (Vite) | ✅ |
-| Admin login / panel / clientes | ✅ |
-| Prod deps audit (`npm audit --omit=dev`) | ⚠️ 1 advisory residual RSC (ver abajo) |
+| Pantalla blanca `/login` | ✅ Corregida |
+| Login UI visible | ✅ |
+| Admin → Dashboard (3 clientes) | ✅ Verificado en browser |
+| API `:4000` + Vite `:5173` | ✅ En ejecución |
+| Build frontend | ✅ |
 
-## Seguridad aplicada en esta pasada
+## Causas de “no se ve nada”
 
-- Eliminado `baseUrl` deprecado (TS 7-ready)
-- `nodemailer` → 9.0.3, `sharp` → 0.35.3, `file-type` → 22.0.1
-- `react-router-dom` → 7.18.2 (parche open-redirect)
-- Emails: escape HTML + URL allowlist http(s) + TLS ≥1.2 en SMTP
+1. Servidores apagados (`ERR_CONNECTION_REFUSED`)
+2. `npm run dev` con `wait-on` + `-k` mataba todo si Mongo tardaba
+3. Auth boot colgado → pantalla “Verificando sesión…”
+4. Form login en `opacity-0` si el intro no disparaba `onComplete`
 
-### Advisory residual
-
-`react-router` GHSA-qwww-vcr4-c8h2 (RSC CSRF) **no aplica**: Canela Coach usa `BrowserRouter` SPA, no React Server Components / framework mode. Forzar downgrade a 7.11.0 reabriría el open-redirect.
-
-## Vercel
-
-| Pieza | ¿Listo? |
-|-------|---------|
-| Frontend SPA | ✅ Root `frontend`, `dist`, `vercel.json` |
-| Backend API | ❌ No en Vercel — Render/Railway/Fly + `VITE_API_BASE_URL` |
-
-## Credenciales demo (solo local / seed)
-
-- Admin: `admin@canelacoach.com` + `SEED_ADMIN_PASSWORD`
-- Coach: `entrenador@canelacoach.com` + `SEED_ENTRENADOR_PASSWORD`
-
-## Arranque
+## Cómo arrancar (correcto)
 
 ```bash
 npm run dev
 ```
+
+Arranca **backend y frontend en paralelo** (sin wait-on).
+
+Si hace falta por separado:
+```bash
+npm run dev:backend
+npm run dev:frontend
+```
+
+## Credenciales demo
+
+- Admin: `admin@canelacoach.com` + `SEED_ADMIN_PASSWORD` (default `CanelaAdmin2026!`)
+- Coach: `entrenador@canelacoach.com` + `SEED_ENTRENADOR_PASSWORD`
+
+## Vercel
+
+| Pieza | Estado |
+|-------|--------|
+| Frontend SPA | ✅ Listo |
+| Backend | ❌ Host Node separado + `VITE_API_BASE_URL` |

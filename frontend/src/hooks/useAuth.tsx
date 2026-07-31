@@ -31,7 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshProfile = async () => {
     try {
-      const { data } = await api.get('/auth/perfil', { timeout: 8_000 });
+      const { data } = await api.get('/auth/perfil', { timeout: 4_000 });
       const u = data.data;
       setUser({
         id: u._id || u.id,
@@ -56,16 +56,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+    // Failsafe: never leave the UI on a blank/boot screen if API/proxy hangs
+    const failsafe = window.setTimeout(() => {
+      if (!cancelled) setLoading(false);
+    }, 3_500);
+
     const boot = async () => {
       try {
         await refreshProfile();
       } finally {
         if (!cancelled) setLoading(false);
+        window.clearTimeout(failsafe);
       }
     };
     void boot();
     return () => {
       cancelled = true;
+      window.clearTimeout(failsafe);
     };
   }, []);
 

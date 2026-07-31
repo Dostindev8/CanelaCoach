@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -14,10 +14,7 @@ import { DividerWithText } from '../components/ui/DividerWithText';
 import { SocialButton } from '../components/ui/SocialButton';
 import { cn } from '../lib/cn';
 import { INTRO_SESSION_KEY } from '../components/intro/intro.constants';
-
-const IntroScreen = lazy(() =>
-  import('../components/intro/IntroScreen').then(({ IntroScreen: Intro }) => ({ default: Intro }))
-);
+import { IntroScreen } from '../components/intro/IntroScreen';
 
 function loginContentVisible(): boolean {
   try {
@@ -93,10 +90,14 @@ export function LoginPage() {
   const [loginVisible, setLoginVisible] = useState(loginContentVisible);
 
   useEffect(() => {
-    if (loginVisible) return;
-    const timer = window.setTimeout(() => setLoginVisible(true), 6_000);
+    // Intro is a z-index overlay — never leave the form permanently invisible.
+    if (loginContentVisible()) {
+      setLoginVisible(true);
+      return;
+    }
+    const timer = window.setTimeout(() => setLoginVisible(true), 5_500);
     return () => window.clearTimeout(timer);
-  }, [loginVisible]);
+  }, []);
 
   const {
     register,
@@ -151,8 +152,8 @@ export function LoginPage() {
     <>
       <AuthLayout
         className={cn(
-          'transition-opacity duration-500 ease-out',
-          loginVisible ? 'opacity-100' : 'pointer-events-none opacity-0'
+          'transition-opacity duration-500 ease-out opacity-100',
+          !loginVisible && 'pointer-events-none'
         )}
       >
         <AuthCard>
@@ -272,9 +273,7 @@ export function LoginPage() {
         </div>
         </AuthCard>
       </AuthLayout>
-      <Suspense fallback={null}>
-        <IntroScreen onComplete={() => setLoginVisible(true)} />
-      </Suspense>
+      <IntroScreen onComplete={() => setLoginVisible(true)} />
     </>
   );
 }

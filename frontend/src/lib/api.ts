@@ -13,15 +13,20 @@ api.interceptors.response.use(
   (r) => r,
   async (error) => {
     const original = error.config;
-    if (error.response?.status === 401 && !original._retry && !original.url?.includes('/auth/login')) {
+    const onLogin = window.location.pathname.startsWith('/login');
+    if (
+      error.response?.status === 401 &&
+      !original._retry &&
+      !original.url?.includes('/auth/login') &&
+      !original.url?.includes('/auth/perfil') &&
+      !onLogin
+    ) {
       original._retry = true;
       try {
         await api.post('/auth/refresh');
         return api(original);
       } catch {
-        if (!window.location.pathname.startsWith('/login')) {
-          window.location.href = '/login';
-        }
+        window.location.href = '/login';
       }
     }
     return Promise.reject(error);

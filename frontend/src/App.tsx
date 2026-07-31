@@ -21,9 +21,20 @@ const qc = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
 });
 
+function BootScreen({ label = 'Cargando Canela Coach®…' }: { label?: string }) {
+  return (
+    <div className="grid min-h-screen place-items-center bg-[#05070C] px-6 text-center text-white">
+      <div className="max-w-sm space-y-3">
+        <div className="animate-pulse font-display text-xl tracking-widest">CANELA COACH®</div>
+        <p className="text-sm text-white/70">{label}</p>
+      </div>
+    </div>
+  );
+}
+
 function PublicOnly({ children }: { children: ReactNode }) {
   const { user, loading, mfaSetupRequired } = useAuth();
-  if (loading) return null;
+  if (loading) return <BootScreen label="Verificando sesión…" />;
   if (user && mfaSetupRequired) return <Navigate to="/mfa-setup" replace />;
   if (user) return <Navigate to="/" replace />;
   return <>{children}</>;
@@ -31,7 +42,7 @@ function PublicOnly({ children }: { children: ReactNode }) {
 
 function CatchAll() {
   const { user, loading } = useAuth();
-  if (loading) return null;
+  if (loading) return <BootScreen />;
   return <Navigate to={user ? '/' : '/login'} replace />;
 }
 
