@@ -28,7 +28,8 @@ export async function connectMongo(): Promise<typeof mongoose> {
       const conn = await mongoose.connect(env.mongodbUri, {
         maxPoolSize: 20,
         minPoolSize: env.nodeEnv === 'production' ? 2 : 0,
-        serverSelectionTimeoutMS: 12_000,
+        // Fail fast in local so memory fallback can start when Atlas ACL blocks TLS.
+        serverSelectionTimeoutMS: env.mongoMemoryFallback ? 5_000 : 12_000,
         socketTimeoutMS: 45_000,
         // Atlas Network Access often lists IPv4 only; dual-stack hosts fail on IPv6 first.
         family: 4,

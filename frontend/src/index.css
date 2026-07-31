@@ -307,10 +307,12 @@ body {
 .panel-shell {
   position: relative;
   isolation: isolate;
+  min-height: 100dvh;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   color: var(--cc-panel-text-primary);
+  overflow-x: hidden;
 }
 .stat-card {
   min-height: 7rem;

@@ -62,36 +62,36 @@ function AuthBackground() {
 /** Desktop matches login-reference.png; mobile matches centered premium card layout. */
 export function AuthLayout({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn('relative flex h-dvh flex-col overflow-hidden bg-void text-text-primary', className)}>
+    <div className={cn('relative flex min-h-dvh flex-col overflow-x-hidden bg-void text-text-primary', className)}>
       <AuthBackground />
       <ChevronDecor className="pointer-events-none fixed inset-y-0 right-0 z-0 hidden h-full w-[min(38vw,520px)] opacity-55 md:block" />
 
       {/* Mobile — centered logo + card + feature grid + copyright */}
       <div className="relative z-10 flex min-h-0 flex-1 flex-col md:hidden">
-        <div className="flex shrink-0 justify-center px-4 pb-2 pt-5">
+        <div className="flex shrink-0 justify-center px-4 pb-2 pt-[max(1.25rem,env(safe-area-inset-top))]">
           <img
             src="/Canelalogo.webp"
             alt="Canela Coach"
             width="1024"
             height="686"
             decoding="async"
-            className="h-[clamp(5.5rem,24vw,7.25rem)] w-auto object-contain drop-shadow-[0_0_28px_rgba(46,155,230,0.45)]"
+            className="h-[clamp(4.75rem,20vw,6.5rem)] w-auto object-contain drop-shadow-[0_0_28px_rgba(46,155,230,0.45)]"
           />
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-2">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           <div className="mx-auto w-full max-w-[420px]">{children}</div>
         </div>
 
-        <div className="shrink-0 px-4 py-4">
-          <div className="mx-auto grid max-w-[420px] grid-cols-2 gap-3">
+        <div className="shrink-0 px-4 py-3">
+          <div className="mx-auto grid max-w-[420px] grid-cols-2 gap-2.5 sm:gap-3">
             {features.map((f) => (
               <FeatureBadge key={f.title} icon={f.icon} title={f.title} subtitle={f.subtitle} />
             ))}
           </div>
         </div>
 
-        <footer className="shrink-0 px-4 pb-5 text-center text-xs text-text-secondary">
+        <footer className="shrink-0 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-center text-xs text-text-secondary">
           © 2026 <span className="font-semibold text-brand-blue">Canela Coach®</span>. Todos los derechos reservados.
         </footer>
       </div>
@@ -104,8 +104,8 @@ export function AuthLayout({ children, className }: { children: ReactNode; class
 
         <BrandHeroPanel />
 
-        <section className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-y-auto px-4 py-5 sm:px-6 lg:overflow-y-visible lg:px-10 lg:py-6">
-          <div className="my-auto w-full max-w-[440px] shrink-0">{children}</div>
+        <section className="flex min-h-0 min-w-0 flex-1 items-start justify-center overflow-y-auto overscroll-contain px-4 py-5 sm:px-6 lg:items-center lg:px-10 lg:py-6">
+          <div className="my-auto w-full max-w-[440px] shrink-0 py-2">{children}</div>
         </section>
       </div>
 
