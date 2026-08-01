@@ -1,0 +1,76 @@
+# Canela Coach® — Render Blueprint (API)
+# Dashboard → New → Blueprint → conectar repo Dostindev8/CanelaCoach
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: canela-coach-api
+    runtime: node
+    plan: starter
+    region: oregon
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "4000"
+      - key: MONGODB_URI
+        sync: false
+      - key: FIELD_ENCRYPTION_KEY
+        sync: false
+      - key: CLIENT_JWT_SECRET
+        generateValue: true
+      - key: CLIENT_JWT_TTL
+        value: 7d
+      - key: FRONTEND_URL
+        sync: false
+      - key: JWT_PRIVATE_KEY
+        sync: false
+      - key: JWT_PUBLIC_KEY
+        sync: false
+      - key: JWT_ACCESS_TTL
+        value: 15m
+      - key: JWT_REFRESH_TTL
+        value: 7d
+      - key: REDIS_URL
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        value: Canela Coach <noreply@canelacoach.com>
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: SEED_ADMIN_EMAIL
+        sync: false
+      - key: SEED_ADMIN_PASSWORD
+        sync: false
+      - key: SEED_ENTRENADOR_EMAIL
+        sync: false
+      - key: SEED_ENTRENADOR_PASSWORD
+        sync: false
+      - key: USE_MEMORY_MONGO
+        value: "false"
+      - key: MONGODB_MEMORY_FALLBACK
+        value: "false"
+      - key: PUPPETEER_CACHE_DIR
+        value: /opt/render/project/src/.cache/puppeteer
