@@ -23,10 +23,16 @@ import { planesRouter } from './routes/planes.js';
 import { citasRouter } from './routes/citas.js';
 import { portalRouter } from './routes/portal.js';
 import { protocolsRouter, supplementCatalogRouter } from './routes/protocols.js';
+import { exercisesRouter, routinesRouter } from './routes/exercises.js';
+import { clienteAuthRouter } from './routes/clienteAuth.js';
+import { clientePortalRouter } from './routes/clientePortal.js';
 import { startReporteWorker } from './workers/worker-reportes.js';
 import { verifyToken } from './middlewares/auth.js';
 import { ensureSeedData, syncDemoCoachProfile, ensureAdminAccess } from './seedData.js';
 import { ensureSupplementCatalogSeed } from './seedSupplements.js';
+import { registerMembershipStatusJob } from './jobs/membershipStatusJob.js';
+import { registerEvaluationReminderJob } from './jobs/evaluationReminderJob.js';
+import { detectScrapingPattern } from './middlewares/antiHacking.js';
 
 assertCriticalEnv();
 
@@ -75,6 +81,7 @@ app.use(
       directives: {
         defaultSrc: ["'self'"],
         imgSrc: ["'self'", 'data:', 'https://res.cloudinary.com'],
+        mediaSrc: ["'self'", 'https://res.cloudinary.com', 'blob:'],
         styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
         fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
         scriptSrc: ["'self'"],
@@ -101,6 +108,7 @@ app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(globalRateLimit);
+app.use(detectScrapingPattern);
 
 app.get('/api/health', (_req, res) => {
   const databaseReady = isDatabaseReady();
@@ -121,8 +129,12 @@ app.use('/api/users', usersRouter);
 app.use('/api/planes', planesRouter);
 app.use('/api/citas', citasRouter);
 app.use('/api/portal', portalRouter);
+app.use('/api/cliente/auth', clienteAuthRouter);
+app.use('/api/cliente/portal', clientePortalRouter);
 app.use('/api/supplement-catalog', supplementCatalogRouter);
 app.use('/api/clientes/:clienteId/protocols', protocolsRouter);
+app.use('/api/exercises', exercisesRouter);
+app.use('/api/routines', routinesRouter);
 // Evaluaciones last: mounted at /api with shared middlewares — must not shadow other routers
 app.use('/api', evaluacionesRouter);
 
@@ -142,6 +154,9 @@ export async function bootstrap(): Promise<http.Server> {
     const n = await limpiarTodosLosLockouts();
     if (n > 0) console.log(`[auth] lockouts limpiados en dev: ${n}`);
   }
+
+  registerMembershipStatusJob();
+  registerEvaluationReminderJob();
 
   const server = http.createServer(app);
   io = new SocketServer(server, {
@@ -181,6 +196,18 @@ export async function bootstrap(): Promise<http.Server> {
 
   // Inline worker for single-process dev; production can run worker separately
   startReporteWorker(emit).catch((err) => console.error('[worker]', err));
+
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(
+        `[api] Puerto ${env.port} ocupado. Cierra la otra instancia o ejecuta:\n` +
+          `  Get-NetTCPConnection -LocalPort ${env.port} -State Listen | % { Stop-Process -Id $_.OwningProcess -Force }`
+      );
+      process.exit(1);
+    }
+    console.error('[api] Error al escuchar', err);
+    process.exit(1);
+  });
 
   server.listen(env.port, () => {
     console.log(`[api] Canela Coach® escuchando en :${env.port}`);

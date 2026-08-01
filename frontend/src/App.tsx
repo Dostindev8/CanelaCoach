@@ -14,7 +14,15 @@ import { EvaluationReportPage } from './pages/EvaluationReportPage';
 import { PlanesPage } from './pages/PlanesPage';
 import { AgendaPage } from './pages/AgendaPage';
 import { PortalPacientePage } from './pages/PortalPacientePage';
+import { PortalClienteLayout } from './pages/portal/PortalClienteLayout';
+import { LoginClientePage } from './pages/portal/LoginClientePage';
+import { RegistroClientePage } from './pages/portal/RegistroClientePage';
+import { OlvidePasswordPage } from './pages/portal/OlvidePasswordPage';
+import { ResetPasswordPage } from './pages/portal/ResetPasswordPage';
+import { DashboardClientePage } from './pages/portal/DashboardClientePage';
+import { VerificarEmailPage } from './pages/portal/VerificarEmailPage';
 import { ProtocolBuilderPage } from './pages/ProtocolBuilderPage';
+import { EjerciciosPage } from './pages/EjerciciosPage';
 import type { ReactNode } from 'react';
 
 const qc = new QueryClient({
@@ -60,7 +68,17 @@ export default function App() {
                 </PublicOnly>
               }
             />
-            <Route path="/portal" element={<PortalPacientePage />} />
+            <Route path="/portal" element={<PortalClienteLayout />}>
+              <Route index element={<Navigate to="login" replace />} />
+              <Route path="login" element={<LoginClientePage />} />
+              <Route path="registro" element={<RegistroClientePage />} />
+              <Route path="olvide-password" element={<OlvidePasswordPage />} />
+              <Route path="reset-password" element={<ResetPasswordPage />} />
+              <Route path="verificar" element={<VerificarEmailPage />} />
+              <Route path="dashboard" element={<DashboardClientePage />} />
+            </Route>
+            {/* Legacy PacienteCuenta portal — EXTEND, keep reachable */}
+            <Route path="/portal/legacy" element={<PortalPacientePage />} />
             <Route path="/mfa-setup" element={<MfaSetupPage />} />
             <Route element={<PrivateRoute />}>
               <Route element={<AppLayout />}>
@@ -75,6 +93,7 @@ export default function App() {
                 />
                 <Route path="clientes/:id/protocolo" element={<ProtocolBuilderPage />} />
                 <Route path="planes" element={<PlanesPage />} />
+                <Route path="ejercicios" element={<EjerciciosPage />} />
                 <Route path="agenda" element={<AgendaPage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Route>

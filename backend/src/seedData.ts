@@ -22,6 +22,7 @@ export async function ensureSeedData(): Promise<void> {
     rol: 'admin',
     mfaObligatorio: env.nodeEnv === 'production',
     mfaHabilitado: false,
+    invitationCode: 'CCADMIN',
   });
 
   const coach = await Entrenador.create({
@@ -29,6 +30,7 @@ export async function ensureSeedData(): Promise<void> {
     email: env.seed.entrenadorEmail,
     passwordHash: coachHash,
     rol: 'entrenador',
+    invitationCode: 'CANELA26',
   });
 
   const clientesData = [
@@ -140,7 +142,22 @@ export async function ensureSeedData(): Promise<void> {
 export async function syncDemoCoachProfile(): Promise<void> {
   await Entrenador.updateOne(
     { email: env.seed.entrenadorEmail.toLowerCase() },
-    { $set: { nombre: 'Abraham Canela' } }
+    { $set: { nombre: 'Abraham Canela', invitationCode: 'CANELA26' } }
+  );
+  await Entrenador.updateOne(
+    { email: env.seed.adminEmail.toLowerCase() },
+    { $set: { invitationCode: 'CCADMIN' } }
+  );
+  // Backfill membership defaults for legacy clients (non-destructive)
+  await Cliente.updateMany(
+    { membershipStatus: { $exists: false } },
+    {
+      $set: {
+        membershipStatus: 'active',
+        gracePeriodDays: 5,
+        evaluationFrequencyDays: 30,
+      },
+    }
   );
 }
 

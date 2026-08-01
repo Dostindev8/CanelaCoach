@@ -3,8 +3,19 @@ import { Request } from 'express';
 import { getCache } from '../config/redis.js';
 import { env } from '../config/env.js';
 
+/** IPv6-safe key generator (express-rate-limit ipKeyGenerator pattern). */
+export function ipKeyGenerator(req: { ip?: string }): string {
+  const ip = req.ip || 'unknown';
+  if (ip.includes(':')) {
+    // Collapse IPv6 to /64 prefix to avoid bypass via address hopping
+    const parts = ip.replace(/^\[|\]$/g, '').split(':');
+    return parts.slice(0, 4).join(':') || ip;
+  }
+  return ip;
+}
+
 function ipKey(req: { ip?: string }): string {
-  return req.ip || 'unknown';
+  return ipKeyGenerator(req);
 }
 
 const isDev = env.nodeEnv !== 'production';

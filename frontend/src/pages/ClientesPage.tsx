@@ -7,11 +7,13 @@ import {
   type ClienteEditable,
   type ClienteFormData,
 } from '../components/clientes/ClienteFormModal';
+import { ClientStatusBadge } from '../components/clientes/ClientStatusBadge';
 
 export function ClientesPage() {
   const [qInput, setQInput] = useState('');
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
+  const [status, setStatus] = useState('all');
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
   const [editingCliente, setEditingCliente] = useState<ClienteEditable | null>(null);
   const qc = useQueryClient();
@@ -25,9 +27,9 @@ export function ClientesPage() {
   }, [qInput]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['clientes', q, page],
+    queryKey: ['clientes', q, page, status],
     queryFn: async () =>
-      (await api.get('/clientes', { params: { q, page, limit: 20 } })).data.data,
+      (await api.get('/clientes', { params: { q, page, limit: 20, status } })).data.data,
   });
 
   const closeModal = () => {
@@ -88,18 +90,55 @@ export function ClientesPage() {
 
   const saving = createMut.isPending || updateMut.isPending;
 
-  type ClienteRow = ClienteEditable & { codigoCliente: string };
+  type ClienteRow = ClienteEditable & {
+    codigoCliente: string;
+    membershipStatus?: string;
+    computedStatus?: string;
+    progresoResumen?: {
+      totalEvaluaciones: number;
+      score: number | null;
+      pesoKg: number | null;
+      grasaPct: number | null;
+      ultimaFecha: string | null;
+    };
+  };
+
+  const summary = data?.summary || { active: 0, inactive: 0, paused: 0, cancelled: 0 };
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <h1 className="panel-text font-display text-fluid-xl tracking-wider">CLIENTES</h1>
-          <p className="panel-muted text-sm">Crear, editar y gestionar fichas de clientes</p>
+          <p className="panel-muted text-sm">Activos e inactivos (pago) visibles · evaluaciones · progreso</p>
         </div>
         <button type="button" className="btn-primary" onClick={openCreate}>
           Nuevo cliente
         </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {(
+          [
+            ['all', 'Todos', (summary.active || 0) + (summary.inactive || 0) + (summary.paused || 0)],
+            ['active', 'Activos', summary.active],
+            ['inactive', 'Pago pendiente', summary.inactive],
+            ['paused', 'Pausados', summary.paused],
+          ] as const
+        ).map(([key, label, count]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => {
+              setStatus(key);
+              setPage(1);
+            }}
+            className={`card-panel !p-3 text-left transition ${status === key ? 'ring-1 ring-accent' : ''}`}
+          >
+            <p className="panel-muted text-xs uppercase tracking-wider">{label}</p>
+            <p className="panel-text mt-1 font-display text-2xl">{count}</p>
+          </button>
+        ))}
       </div>
 
       <input
@@ -119,16 +158,22 @@ export function ClientesPage() {
         <>
           <div className="grid gap-3 md:hidden">
             {(data?.items || []).map((c: ClienteRow) => (
-              <div key={c._id} className="card-panel flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <Link to={`/clientes/${c._id}`} className="panel-text font-semibold">
-                    {c.nombre}
-                  </Link>
-                  <p className="panel-muted text-xs">
-                    {c.codigoCliente} · {c.edad} · {c.sexo}
-                  </p>
+              <div key={c._id} className="card-panel flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <Link to={`/clientes/${c._id}`} className="panel-text font-semibold">
+                      {c.nombre}
+                    </Link>
+                    <p className="panel-muted text-xs">
+                      {c.codigoCliente} · {c.edad} · {c.sexo}
+                    </p>
+                  </div>
+                  <ClientStatusBadge status={c.computedStatus || c.membershipStatus} />
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <Link to={`/clientes/${c._id}`} className="btn-primary text-xs">
+                    Ver progreso
+                  </Link>
                   <button type="button" className="btn-ghost text-xs" onClick={() => openEdit(c)}>
                     Editar
                   </button>
@@ -143,9 +188,6 @@ export function ClientesPage() {
                 </div>
               </div>
             ))}
-            {(data?.items || []).length === 0 && (
-              <p className="panel-muted text-sm">No hay clientes. Crea el primero con el botón superior.</p>
-            )}
           </div>
 
           <div className="card-panel hidden overflow-x-auto md:block">
@@ -153,9 +195,9 @@ export function ClientesPage() {
               <thead>
                 <tr className="panel-muted border-b border-[var(--cc-panel-border)] text-left">
                   <th className="py-2">Nombre</th>
+                  <th>Estado</th>
                   <th>Código</th>
-                  <th>Edad</th>
-                  <th>Sexo</th>
+                  <th>Score</th>
                   <th className="text-right">Acciones</th>
                 </tr>
               </thead>
@@ -167,11 +209,22 @@ export function ClientesPage() {
                         {c.nombre}
                       </Link>
                     </td>
+                    <td>
+                      <ClientStatusBadge status={c.computedStatus || c.membershipStatus} />
+                    </td>
                     <td>{c.codigoCliente}</td>
-                    <td>{c.edad}</td>
-                    <td>{c.sexo}</td>
+                    <td>
+                      {c.progresoResumen?.score != null ? (
+                        <span className="font-semibold text-accent">{c.progresoResumen.score}%</span>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
                     <td className="text-right">
                       <div className="flex justify-end gap-1">
+                        <Link to={`/clientes/${c._id}`} className="min-h-touch px-2 text-xs font-semibold text-accent">
+                          Progreso
+                        </Link>
                         <button
                           type="button"
                           className="min-h-touch px-2 text-xs font-semibold text-accent"
@@ -193,9 +246,6 @@ export function ClientesPage() {
                 ))}
               </tbody>
             </table>
-            {(data?.items || []).length === 0 && (
-              <p className="panel-muted py-6 text-center text-sm">No hay clientes registrados.</p>
-            )}
           </div>
 
           <div className="flex items-center justify-between">

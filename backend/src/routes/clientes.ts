@@ -11,12 +11,23 @@ import { Cita } from '../models/Cita.js';
 import { Report } from '../models/Report.js';
 import { requireAuth } from '../middlewares/auth.js';
 import { AppError, asyncHandler } from '../middlewares/errorHandler.js';
-import { parseBody, clienteSchema, cuestionarioIngresoSchema } from '../validators/schemas.js';
+import { parseBody, clienteSchema, cuestionarioIngresoSchema, pagoClienteSchema, membershipPatchSchema } from '../validators/schemas.js';
 import { registrarAuditoria } from '../middlewares/audit.js';
 import { cacheDel } from '../config/redis.js';
 import { aplicarCuestionarioACliente } from '../services/syncCuestionarioCliente.js';
 import { paramId } from '../utils/params.js';
 import { entrenadorScope, isAdmin } from '../utils/accessScope.js';
+import {
+  buildClienteProgreso,
+  resumenDesdeUltimaEval,
+  type EvalProgresoLike,
+} from '../services/clienteProgreso.js';
+import {
+  computeMembershipStatus,
+  defaultPeriodEnd,
+  type MembershipStatus,
+} from '../services/membership.js';
+const EVAL_ACTIVA = { activo: { $ne: false } } as const;
 
 export const clientesRouter = Router();
 clientesRouter.use(requireAuth);
@@ -37,12 +48,17 @@ clientesRouter.get(
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
     const q = String(req.query.q || '').trim();
+    // Soft-delete archive only when explicitly requested; default keeps non-archived.
     const activo = req.query.activo === undefined ? true : req.query.activo === 'true';
+    const status = String(req.query.status || 'all') as MembershipStatus | 'all';
 
     const filter: Record<string, unknown> = {
       ...entrenadorScope(req),
       activo,
     };
+    if (status !== 'all' && ['active', 'inactive', 'paused', 'cancelled'].includes(status)) {
+      filter.membershipStatus = status;
+    }
     if (q) {
       filter.$or = [
         { nombre: { $regex: q, $options: 'i' } },
@@ -51,24 +67,77 @@ clientesRouter.get(
       ];
     }
 
-    const [items, total] = await Promise.all([
+    const scopeBase = { ...entrenadorScope(req), activo: true };
+
+    const [items, total, activeCount, inactiveCount, pausedCount, cancelledCount] = await Promise.all([
       Cliente.find(filter)
-        .sort({ updatedAt: -1 })
+        .sort({ membershipStatus: 1, nombre: 1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .select('-antecedentes')
         .lean(),
       Cliente.countDocuments(filter),
+      Cliente.countDocuments({ ...scopeBase, membershipStatus: 'active' }),
+      Cliente.countDocuments({ ...scopeBase, membershipStatus: 'inactive' }),
+      Cliente.countDocuments({ ...scopeBase, membershipStatus: 'paused' }),
+      Cliente.countDocuments({ ...scopeBase, membershipStatus: 'cancelled' }),
     ]);
+
+    const ids = items.map((c) => c._id);
+    const resumenByCliente = new Map<string, ReturnType<typeof resumenDesdeUltimaEval>>();
+
+    if (ids.length > 0) {
+      const evals = await Evaluacion.find({
+        clienteId: { $in: ids },
+        ...entrenadorScope(req),
+        ...EVAL_ACTIVA,
+      })
+        .sort({ fecha: -1 })
+        .select(
+          'clienteId fecha antropometria composicionCorporal resultadosCalculados scoreFisico weightLb'
+        )
+        .lean();
+
+      const counts = new Map<string, number>();
+      for (const e of evals) {
+        const cid = String(e.clienteId);
+        counts.set(cid, (counts.get(cid) || 0) + 1);
+        if (!resumenByCliente.has(cid)) {
+          resumenByCliente.set(cid, resumenDesdeUltimaEval(0, e as EvalProgresoLike));
+        }
+      }
+      for (const [cid, resumen] of resumenByCliente) {
+        resumen.totalEvaluaciones = counts.get(cid) || 0;
+      }
+    }
+
+    const itemsConProgreso = items.map((c) => {
+      const computedStatus = computeMembershipStatus({
+        membershipStatus: c.membershipStatus as MembershipStatus,
+        currentPeriodEnd: c.currentPeriodEnd,
+        gracePeriodDays: c.gracePeriodDays,
+      });
+      return {
+        ...c,
+        computedStatus,
+        progresoResumen: resumenByCliente.get(String(c._id)) || resumenDesdeUltimaEval(0, null),
+      };
+    });
 
     res.json({
       ok: true,
       data: {
-        items,
+        items: itemsConProgreso,
         page,
         limit,
         total,
-        pages: Math.ceil(total / limit),
+        pages: Math.ceil(total / limit) || 1,
+        summary: {
+          active: activeCount,
+          inactive: inactiveCount,
+          paused: pausedCount,
+          cancelled: cancelledCount,
+        },
       },
     });
   })
@@ -89,6 +158,11 @@ clientesRouter.post(
     const cliente = await Cliente.create({
       ...data,
       entrenadorId: req.entrenadorId,
+      membershipStatus: 'active',
+      currentPeriodEnd: defaultPeriodEnd(),
+      gracePeriodDays: 5,
+      evaluationFrequencyDays: 30,
+      nextEvaluationDate: defaultPeriodEnd(new Date(), 30),
     });
 
     await registrarAuditoria({
@@ -206,20 +280,22 @@ clientesRouter.put(
 clientesRouter.get(
   '/:id',
   asyncHandler(async (req: Request, res: Response) => {
-    const cliente = await Cliente.findOne(isAdmin(req) ? { _id: req.params.id } : { _id: req.params.id, entrenadorId: req.entrenadorId });
+    const cliente = await Cliente.findOne(
+      isAdmin(req) ? { _id: req.params.id } : { _id: req.params.id, entrenadorId: req.entrenadorId }
+    );
     if (!cliente) throw new AppError('Cliente no encontrado', 404);
 
     const evaluaciones = await Evaluacion.find({
       clienteId: cliente._id,
-      entrenadorId: req.entrenadorId,
+      ...entrenadorScope(req),
+      ...EVAL_ACTIVA,
     })
       .sort({ fecha: -1 })
-      .limit(3)
       .lean();
 
     const tieneCuestionario = !!(await CuestionarioIngreso.exists({
       clienteId: cliente._id,
-      entrenadorId: req.entrenadorId,
+      ...(isAdmin(req) ? {} : { entrenadorId: req.entrenadorId }),
     }));
 
     await registrarAuditoria({
@@ -235,8 +311,9 @@ clientesRouter.get(
       ok: true,
       data: {
         ...clienteConAntecedentesDescifrados(cliente),
-        evaluacionesRecientes: evaluaciones,
+        evaluacionesRecientes: evaluaciones.slice(0, 3),
         tieneCuestionario,
+        progreso: buildClienteProgreso(evaluaciones as EvalProgresoLike[]),
       },
     });
   })
@@ -272,7 +349,7 @@ clientesRouter.get(
     const clienteId = paramId(req.params.id);
     const cliente = await assertClienteOwn(clienteId, req);
     const [evaluaciones, planes, citas, reportes, cuestionario] = await Promise.all([
-      Evaluacion.find({ clienteId, ...entrenadorScope(req) })
+      Evaluacion.find({ clienteId, ...entrenadorScope(req), ...EVAL_ACTIVA })
         .sort({ fecha: -1 })
         .lean(),
       PlanAsignacion.find({ clienteId, ...entrenadorScope(req), activo: true })
@@ -281,8 +358,13 @@ clientesRouter.get(
         .lean(),
       Cita.find({ clienteId, ...entrenadorScope(req) }).sort({ fecha: -1 }).lean(),
       Report.find({ clienteId, ...entrenadorScope(req) }).sort({ generadoEn: -1 }).lean(),
-      CuestionarioIngreso.findOne({ clienteId }).lean(),
+      CuestionarioIngreso.findOne({
+        clienteId,
+        ...(isAdmin(req) ? {} : { entrenadorId: req.entrenadorId }),
+      }).lean(),
     ]);
+
+    const progreso = buildClienteProgreso(evaluaciones as EvalProgresoLike[]);
 
     const timeline = [
       {
@@ -340,8 +422,73 @@ clientesRouter.get(
         citas,
         reportes,
         timeline,
+        progreso,
+        cuestionario: cuestionario
+          ? {
+              objetivoPrincipal: cuestionario.objetivoPrincipal,
+              updatedAt: cuestionario.updatedAt,
+            }
+          : null,
       },
     });
+  })
+);
+
+clientesRouter.post(
+  '/:id/pagos',
+  asyncHandler(async (req: Request, res: Response) => {
+    const clienteId = paramId(req.params.id);
+    const cliente = await assertClienteOwn(clienteId, req);
+    const data = parseBody(pagoClienteSchema, req.body);
+    const paidAt = data.paidAt || new Date();
+
+    cliente.paymentHistory.push({
+      amount: data.amount,
+      currency: data.currency || 'DOP',
+      paidAt,
+      method: data.method,
+      periodStart: data.periodStart,
+      periodEnd: data.periodEnd,
+      registeredBy: req.entrenadorId as unknown as import('mongoose').Types.ObjectId,
+      notes: data.notes,
+    });
+    cliente.currentPeriodEnd = data.periodEnd;
+    cliente.membershipStatus = 'active';
+    await cliente.save();
+
+    await registrarAuditoria({
+      entrenadorId: req.entrenadorId!,
+      clienteId,
+      accion: 'edicion',
+      entidad: 'ClientePago',
+      entidadId: clienteId,
+      req,
+    });
+    await cacheDel(`dashboard:${req.entrenadorId}`);
+
+    res.status(201).json({
+      ok: true,
+      data: clienteConAntecedentesDescifrados(cliente),
+    });
+  })
+);
+
+clientesRouter.patch(
+  '/:id/membresia',
+  asyncHandler(async (req: Request, res: Response) => {
+    const clienteId = paramId(req.params.id);
+    const cliente = await assertClienteOwn(clienteId, req);
+    const data = parseBody(membershipPatchSchema, req.body);
+    if (data.membershipStatus) cliente.membershipStatus = data.membershipStatus;
+    if (data.currentPeriodEnd) cliente.currentPeriodEnd = data.currentPeriodEnd;
+    if (data.gracePeriodDays != null) cliente.gracePeriodDays = data.gracePeriodDays;
+    if (data.nextEvaluationDate !== undefined) cliente.nextEvaluationDate = data.nextEvaluationDate;
+    if (data.evaluationFrequencyDays != null) {
+      cliente.evaluationFrequencyDays = data.evaluationFrequencyDays;
+    }
+    await cliente.save();
+    await cacheDel(`dashboard:${req.entrenadorId}`);
+    res.json({ ok: true, data: clienteConAntecedentesDescifrados(cliente) });
   })
 );
 
@@ -352,6 +499,7 @@ clientesRouter.delete(
     if (!cliente) throw new AppError('Cliente no encontrado', 404);
 
     cliente.activo = false;
+    cliente.membershipStatus = 'cancelled';
     await cliente.save();
 
     await registrarAuditoria({
@@ -364,6 +512,6 @@ clientesRouter.delete(
     });
     await cacheDel(`dashboard:${req.entrenadorId}`);
 
-    res.json({ ok: true, data: { id: cliente._id, activo: false } });
+    res.json({ ok: true, data: { id: cliente._id, activo: false, membershipStatus: 'cancelled' } });
   })
 );

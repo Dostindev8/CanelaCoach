@@ -25,11 +25,17 @@ export const env = {
   // Development stays usable offline; production never falls back to volatile storage.
   mongoMemoryFallback:
     process.env.NODE_ENV !== 'production' && process.env.MONGODB_MEMORY_FALLBACK !== 'false',
+  /** Skip Atlas/local URI and boot Memory Server immediately (dev only). */
+  useMemoryMongo:
+    process.env.NODE_ENV !== 'production' && process.env.USE_MEMORY_MONGO === 'true',
   redisUrl: process.env.REDIS_URL || '',
   jwtPrivateKey: readKey(process.env.JWT_PRIVATE_KEY_PATH) || process.env.JWT_PRIVATE_KEY || '',
   jwtPublicKey: readKey(process.env.JWT_PUBLIC_KEY_PATH) || process.env.JWT_PUBLIC_KEY || '',
   jwtAccessTtl: process.env.JWT_ACCESS_TTL || '15m',
   jwtRefreshTtl: process.env.JWT_REFRESH_TTL || '7d',
+  /** Parallel client portal JWT — never reuse trainer access_token cookie. */
+  clientJwtSecret: process.env.CLIENT_JWT_SECRET || '',
+  clientJwtTtl: process.env.CLIENT_JWT_TTL || '7d',
   fieldEncryptionKey: process.env.FIELD_ENCRYPTION_KEY || '',
   cloudinary: {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
@@ -80,6 +86,11 @@ export function assertCriticalEnv(): void {
     ) {
       console.warn(
         '[config] SEED_*_PASSWORD usa valores demo. Cámbialos en producción (SEED_ADMIN_PASSWORD / SEED_ENTRENADOR_PASSWORD).'
+      );
+    }
+    if (!env.clientJwtSecret || env.clientJwtSecret.length < 32) {
+      throw new Error(
+        '[config] CLIENT_JWT_SECRET (≥32 chars) obligatorio en producción para el portal cliente.'
       );
     }
   } else if (!env.fieldEncryptionKey || env.fieldEncryptionKey.length !== 64) {

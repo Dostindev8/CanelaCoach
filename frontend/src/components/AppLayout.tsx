@@ -15,6 +15,7 @@ const links = [
   { to: '/', label: 'Dashboard', end: true },
   { to: '/clientes', label: 'Clientes' },
   { to: '/planes', label: 'Planes' },
+  { to: '/ejercicios', label: 'Ejercicios' },
   { to: '/agenda', label: 'Agenda' },
 ];
 

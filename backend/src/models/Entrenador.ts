@@ -9,6 +9,7 @@ export interface IEntrenador extends Document {
   logoUrl: string;
   photoUrl?: string | null;
   photoPublicId?: string | null;
+  invitationCode?: string | null;
   activo: boolean;
   limiteClientes: number;
   mfaSecret?: string;
@@ -29,6 +30,7 @@ const EntrenadorSchema = new Schema<IEntrenador>(
     logoUrl: { type: String, default: '' },
     photoUrl: { type: String, default: null },
     photoPublicId: { type: String, default: null, select: false },
+    invitationCode: { type: String, unique: true, sparse: true, uppercase: true, trim: true },
     activo: { type: Boolean, default: true },
     limiteClientes: { type: Number, default: 1000 },
     mfaSecret: { type: String, select: false },
@@ -39,6 +41,13 @@ const EntrenadorSchema = new Schema<IEntrenador>(
   },
   { timestamps: true }
 );
+
+EntrenadorSchema.pre('validate', function (next) {
+  if (!this.invitationCode) {
+    this.invitationCode = `CC-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  }
+  next();
+});
 
 EntrenadorSchema.pre('save', function (next) {
   // MFA obligatorio para admin solo en producción (local/QA sin TOTP bloqueaba el panel)

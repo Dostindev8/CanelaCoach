@@ -4,7 +4,7 @@ import { api } from '../lib/api';
 import { SubidaFoto } from '../components/ui/SubidaFoto';
 import { CelebrationOverlay } from '../components/ui/CelebrationOverlay';
 import { SmartScaleDiscrepancyBanner } from '../components/evaluacion/SmartScaleDiscrepancyBanner';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const STEPS = [
   'Antropometría',
@@ -138,6 +138,7 @@ function num(v: unknown): number | undefined {
 export function WizardEvaluacionPage() {
   const { id: clienteId } = useParams();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>(empty);
   const [evaluacionId, setEvaluacionId] = useState<string | null>(null);
@@ -305,6 +306,15 @@ export function WizardEvaluacionPage() {
 
       await api.delete(`/clientes/${clienteId}/borrador`);
       setSavedEvalId(evalId);
+
+      // Refresh ficha individual: métricas, expediente y listado
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['cliente', clienteId] }),
+        qc.invalidateQueries({ queryKey: ['expediente', clienteId] }),
+        qc.invalidateQueries({ queryKey: ['evaluaciones', clienteId] }),
+        qc.invalidateQueries({ queryKey: ['clientes'] }),
+        qc.invalidateQueries({ queryKey: ['dashboard'] }),
+      ]);
 
       if (saved?.scoreFisico?.celebracion) {
         setCelebration({

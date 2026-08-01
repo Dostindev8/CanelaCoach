@@ -23,6 +23,18 @@ export function isDatabaseReady(): boolean {
 export async function connectMongo(): Promise<typeof mongoose> {
   mongoose.set('strictQuery', true);
 
+  if (env.useMemoryMongo) {
+    console.warn('[mongo] USE_MEMORY_MONGO=true → Memory Server (sin Atlas)');
+    memoryServer = await MongoMemoryServer.create();
+    const conn = await mongoose.connect(memoryServer.getUri(), {
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 5_000,
+    });
+    databaseReady = true;
+    console.log('[mongo] Memory Server listo (datos volátiles — se pierden al reiniciar)');
+    return conn;
+  }
+
   for (let attempt = 1; ; attempt += 1) {
     try {
       const conn = await mongoose.connect(env.mongodbUri, {
@@ -30,6 +42,7 @@ export async function connectMongo(): Promise<typeof mongoose> {
         minPoolSize: env.nodeEnv === 'production' ? 2 : 0,
         // Fail fast in local so memory fallback can start when Atlas ACL blocks TLS.
         serverSelectionTimeoutMS: env.mongoMemoryFallback ? 5_000 : 12_000,
+        connectTimeoutMS: env.mongoMemoryFallback ? 5_000 : 12_000,
         socketTimeoutMS: 45_000,
         // Atlas Network Access often lists IPv4 only; dual-stack hosts fail on IPv6 first.
         family: 4,

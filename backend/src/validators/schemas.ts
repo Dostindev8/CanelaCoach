@@ -341,6 +341,80 @@ export const supplementCatalogSchema = z.object({
   active: z.boolean().optional(),
 });
 
+export const pagoClienteSchema = z.object({
+  amount: z.number().min(0),
+  currency: z.enum(['DOP', 'USD']).default('DOP'),
+  paidAt: z.coerce.date().optional(),
+  method: z.enum(['cash', 'transfer', 'card', 'other']),
+  periodStart: z.coerce.date(),
+  periodEnd: z.coerce.date(),
+  notes: z.string().max(500).optional(),
+});
+
+export const membershipPatchSchema = z.object({
+  membershipStatus: z.enum(['active', 'inactive', 'paused', 'cancelled']).optional(),
+  currentPeriodEnd: z.coerce.date().optional(),
+  gracePeriodDays: z.number().int().min(0).max(60).optional(),
+  nextEvaluationDate: z.coerce.date().nullable().optional(),
+  evaluationFrequencyDays: z.number().int().min(7).max(365).optional(),
+});
+
+export const pacienteRegisterSchema = z.object({
+  fullName: z.string().min(2).max(120).optional(),
+  email: z.string().email(),
+  phone: z.string().min(8).max(30),
+  password: z.string().min(8).max(128),
+  invitationCode: z.string().min(4).max(32),
+  clienteId: z.string().optional(),
+});
+
+export const exerciseSchema = z.object({
+  name: z.string().min(2).max(160),
+  muscleGroup: z.enum([
+    'pecho',
+    'espalda',
+    'piernas',
+    'hombros',
+    'brazos',
+    'core',
+    'cardio',
+    'full_body',
+  ]),
+  videoUrl: z.string().url(),
+  videoPublicId: z.string().min(1).max(300),
+  thumbnailUrl: z.string().url().optional().or(z.literal('')),
+  durationSeconds: z.number().int().min(1).max(7200).optional(),
+  instructions: z.string().max(1000).optional(),
+  isTemplate: z.boolean().optional(),
+});
+
+export const routineSchema = z.object({
+  clienteId: z.string().min(1),
+  title: z.string().min(2).max(200),
+  startDate: z.coerce.date().optional(),
+  isActive: z.boolean().optional(),
+  days: z
+    .array(
+      z.object({
+        dayLabel: z.string().min(1).max(120),
+        exercises: z
+          .array(
+            z.object({
+              exerciseId: z.string().min(1),
+              sets: z.number().int().min(1).max(50),
+              reps: z.string().min(1).max(40),
+              restSeconds: z.number().int().min(0).max(600).optional(),
+              notes: z.string().max(300).optional(),
+            })
+          )
+          .min(1)
+          .max(40),
+      })
+    )
+    .min(1)
+    .max(14),
+});
+
 export function parseBody<T>(schema: z.ZodSchema<T>, data: unknown): T {
   const result = schema.safeParse(data);
   if (!result.success) {

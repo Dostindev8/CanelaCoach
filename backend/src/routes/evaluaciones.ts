@@ -238,6 +238,11 @@ evaluacionesRouter.post(
       },
     });
 
+    const freq = cliente.evaluationFrequencyDays || 30;
+    cliente.lastEvaluationDate = fecha;
+    cliente.nextEvaluationDate = new Date(fecha.getTime() + freq * 24 * 60 * 60 * 1000);
+    await cliente.save();
+
     // HOOK FUTURO: análisis IA de estancamiento y sugerencias
     // (integrar tras guardar evaluación — leer historial + observacionesCoach)
 

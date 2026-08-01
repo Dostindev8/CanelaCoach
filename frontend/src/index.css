@@ -2,6 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Proprietary content deterrent — never apply to form controls */
+.protected-content {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.protected-content input,
+.protected-content textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+
 :root {
   --color-void: #000000;
   --color-surface: #050b14;
