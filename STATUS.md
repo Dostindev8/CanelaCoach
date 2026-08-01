@@ -1,4 +1,20 @@
-# Canela Coach® — Status (2026-07-31) MEGA-BUILD v1.0
+# Canela Coach® — Status (2026-08-01) MEGA-18 Portal Cliente
+
+## MEGA-18 — Portal autoregistro / login cliente
+
+| Ítem | Estado |
+|------|--------|
+| Auth paralela cliente (cookie `cc_client_session`, `CLIENT_JWT_SECRET`) | ✅ |
+| Código invitación + registro + verify email + reset | ✅ |
+| Portal read-only API `/api/cliente/portal/*` | ✅ |
+| UI `/portal/login|registro|verificar|dashboard…` | ✅ |
+| Tests unit+integración `clienteAuth` | ✅ (27 tests suite) |
+| Commit `feat/portal-cliente-auth` | ✅ local |
+| Push GitHub / PR | ⚠️ sin `origin` + `gh` no auth |
+| SMTP producción | ⚠️ simulado en consola si no hay SMTP_* |
+| AgenteWidget en portal cliente | ⚠️ falta (agente solo JWT entrenador) |
+| Cobertura ≥80% formal + gitleaks CI | ⚠️ coverage pkg / gitleaks no instalados |
+| E2E Playwright registro→login | ⚠️ no automatizado (flujo manual OK) |
 
 ## FASE 0 — Auditoría (completada)
 

@@ -216,7 +216,8 @@ export async function bootstrap(): Promise<http.Server> {
   return server;
 }
 
-if (process.argv[1] && process.argv[1].includes('index')) {
+// Vitest imports `app` without listening. tsx/node argv varies — do not rely on path includes 'index'.
+if (!process.env.VITEST) {
   bootstrap().catch((err) => {
     console.error('Fatal bootstrap error', err);
     process.exit(1);
