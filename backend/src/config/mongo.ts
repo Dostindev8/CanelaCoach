@@ -91,3 +91,23 @@ export async function stopMemoryMongo(): Promise<void> {
     memoryServer = null;
   }
 }
+
+/** Close mongoose (and in-memory Mongo if used). Safe to call during graceful shutdown. */
+export async function disconnectMongo(): Promise<void> {
+  databaseReady = false;
+  try {
+    if (mongoose.connection.readyState !== 0) {
+      await mongoose.disconnect();
+    }
+  } catch (err) {
+    console.error('[mongo] disconnect:', safeMongoError(err));
+  }
+  if (memoryServer) {
+    try {
+      await memoryServer.stop();
+    } catch (err) {
+      console.error('[mongo] memory stop:', safeMongoError(err));
+    }
+    memoryServer = null;
+  }
+}

@@ -1,8 +1,11 @@
+import type { ScheduledTask } from 'node-cron';
 import cron from 'node-cron';
 import { Cliente } from '../models/Cliente.js';
 import { computeMembershipStatus } from '../services/membership.js';
 import { notifyPaymentOverdue } from '../services/whatsappService.js';
 import { env } from '../config/env.js';
+
+let task: ScheduledTask | null = null;
 
 export async function recalculateMembershipStatuses(): Promise<{ updated: number; notified: number }> {
   const clients = await Cliente.find({
@@ -38,12 +41,30 @@ export async function recalculateMembershipStatuses(): Promise<{ updated: number
   return { updated, notified };
 }
 
+/** Cron isolated: failures never crash the HTTP process. */
 export function registerMembershipStatusJob(): void {
   if (env.nodeEnv === 'test') return;
-  cron.schedule('0 6 * * *', () => {
-    recalculateMembershipStatuses().catch((err) =>
-      console.error('[membershipStatusJob]', (err as Error).message)
+  try {
+    task = cron.schedule(
+      '0 6 * * *',
+      () => {
+        recalculateMembershipStatuses().catch((err) =>
+          console.error('[membershipStatusJob]', (err as Error).message)
+        );
+      },
+      { timezone: 'America/Santo_Domingo' }
     );
-  }, { timezone: 'America/Santo_Domingo' });
-  console.log('[cron] membershipStatusJob → 06:00 America/Santo_Domingo');
+    console.log('[cron] membershipStatusJob → 06:00 America/Santo_Domingo');
+  } catch (err) {
+    console.error('[cron] membershipStatusJob failed to register:', (err as Error).message);
+  }
+}
+
+export function stopMembershipStatusJob(): void {
+  try {
+    task?.stop();
+    task = null;
+  } catch (err) {
+    console.error('[cron] membershipStatusJob stop:', (err as Error).message);
+  }
 }

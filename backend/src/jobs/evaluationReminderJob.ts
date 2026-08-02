@@ -1,9 +1,11 @@
+import type { ScheduledTask } from 'node-cron';
 import cron from 'node-cron';
 import { Cliente } from '../models/Cliente.js';
 import { notifyUpcomingEvaluation } from '../services/whatsappService.js';
 import { env } from '../config/env.js';
 
 const REMINDER_WINDOW_DAYS = 2;
+let task: ScheduledTask | null = null;
 
 export async function sendEvaluationReminders(): Promise<{ sent: number }> {
   const now = new Date();
@@ -36,12 +38,30 @@ export async function sendEvaluationReminders(): Promise<{ sent: number }> {
   return { sent };
 }
 
+/** Cron isolated: failures never crash the HTTP process. */
 export function registerEvaluationReminderJob(): void {
   if (env.nodeEnv === 'test') return;
-  cron.schedule('0 9 * * *', () => {
-    sendEvaluationReminders().catch((err) =>
-      console.error('[evaluationReminderJob]', (err as Error).message)
+  try {
+    task = cron.schedule(
+      '0 9 * * *',
+      () => {
+        sendEvaluationReminders().catch((err) =>
+          console.error('[evaluationReminderJob]', (err as Error).message)
+        );
+      },
+      { timezone: 'America/Santo_Domingo' }
     );
-  }, { timezone: 'America/Santo_Domingo' });
-  console.log('[cron] evaluationReminderJob → 09:00 America/Santo_Domingo');
+    console.log('[cron] evaluationReminderJob → 09:00 America/Santo_Domingo');
+  } catch (err) {
+    console.error('[cron] evaluationReminderJob failed to register:', (err as Error).message);
+  }
+}
+
+export function stopEvaluationReminderJob(): void {
+  try {
+    task?.stop();
+    task = null;
+  } catch (err) {
+    console.error('[cron] evaluationReminderJob stop:', (err as Error).message);
+  }
 }

@@ -101,10 +101,13 @@ type CacheClient = IoRedis | MemoryFallback;
 let redisClient: CacheClient;
 let usingFallback = false;
 
+let ioRedisInstance: IoRedis | null = null;
+
 export async function connectRedis(): Promise<void> {
   if (!env.redisUrl) {
     redisClient = new MemoryFallback();
     usingFallback = true;
+    ioRedisInstance = null;
     console.log('[redis] sin REDIS_URL → fallback Map() en memoria');
     return;
   }
@@ -118,12 +121,31 @@ export async function connectRedis(): Promise<void> {
     await client.connect();
     await client.ping();
     redisClient = client;
+    ioRedisInstance = client;
     usingFallback = false;
     console.log('[redis] conectado a Upstash/Redis');
   } catch (err) {
     console.warn('[redis] conexión fallida → fallback Map()', (err as Error).message);
     redisClient = new MemoryFallback();
+    ioRedisInstance = null;
     usingFallback = true;
+  }
+}
+
+/** Quit real Redis client on shutdown (no-op for in-memory fallback). */
+export async function disconnectRedis(): Promise<void> {
+  if (!ioRedisInstance) return;
+  try {
+    await ioRedisInstance.quit();
+  } catch (err) {
+    console.error('[redis] quit:', (err as Error).message);
+    try {
+      ioRedisInstance.disconnect();
+    } catch {
+      /* ignore */
+    }
+  } finally {
+    ioRedisInstance = null;
   }
 }
 

@@ -8,8 +8,8 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { Server as SocketServer } from 'socket.io';
 import { env, assertCriticalEnv } from './config/env.js';
-import { connectMongo, isDatabaseReady } from './config/mongo.js';
-import { connectRedis } from './config/redis.js';
+import { connectMongo, disconnectMongo, isDatabaseReady } from './config/mongo.js';
+import { connectRedis, disconnectRedis } from './config/redis.js';
 import { configureCloudinary } from './config/cloudinary.js';
 import { globalRateLimit, limpiarTodosLosLockouts } from './middlewares/rateLimit.js';
 import { errorHandler } from './middlewares/errorHandler.js';
@@ -26,12 +26,18 @@ import { protocolsRouter, supplementCatalogRouter } from './routes/protocols.js'
 import { exercisesRouter, routinesRouter } from './routes/exercises.js';
 import { clienteAuthRouter } from './routes/clienteAuth.js';
 import { clientePortalRouter } from './routes/clientePortal.js';
-import { startReporteWorker } from './workers/worker-reportes.js';
+import { startReporteWorker, stopReporteWorker } from './workers/worker-reportes.js';
 import { verifyToken } from './middlewares/auth.js';
 import { ensureSeedData, syncDemoCoachProfile, ensureAdminAccess } from './seedData.js';
 import { ensureSupplementCatalogSeed } from './seedSupplements.js';
-import { registerMembershipStatusJob } from './jobs/membershipStatusJob.js';
-import { registerEvaluationReminderJob } from './jobs/evaluationReminderJob.js';
+import {
+  registerMembershipStatusJob,
+  stopMembershipStatusJob,
+} from './jobs/membershipStatusJob.js';
+import {
+  registerEvaluationReminderJob,
+  stopEvaluationReminderJob,
+} from './jobs/evaluationReminderJob.js';
 import { detectScrapingPattern } from './middlewares/antiHacking.js';
 
 assertCriticalEnv();
@@ -194,14 +200,24 @@ export async function bootstrap(): Promise<http.Server> {
     io.to(`entrenador:${entrenadorId}`).emit(event, payload);
   };
 
-  // Inline worker for single-process dev; production can run worker separately
-  startReporteWorker(emit).catch((err) => console.error('[worker]', err));
+  // Inline worker for single-process dev; production can run worker separately.
+  // Isolated: worker loop errors must never take down HTTP.
+  try {
+    startReporteWorker(emit).catch((err) =>
+      console.error('[worker-reportes] start failed (HTTP continues):', (err as Error).message)
+    );
+  } catch (err) {
+    console.error('[worker-reportes] register failed (HTTP continues):', (err as Error).message);
+  }
 
   server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
       console.error(
-        `[api] Puerto ${env.port} ocupado. Cierra la otra instancia o ejecuta:\n` +
-          `  Get-NetTCPConnection -LocalPort ${env.port} -State Listen | % { Stop-Process -Id $_.OwningProcess -Force }`
+        `[api] Puerto ${env.port} ocupado.\n` +
+          `  1) Preferido (auto):  npm run dev:clean -w backend\n` +
+          `  2) Desde la raíz:     npm run dev:clean -w backend\n` +
+          `  3) Manual PowerShell: Get-NetTCPConnection -LocalPort ${env.port} -State Listen | % { Stop-Process -Id $_.OwningProcess -Force }\n` +
+          `  Nota: "npm run dev" ya ejecuta predev (kill-port). Si aún falla, usa dev:clean o el paso 3.`
       );
       process.exit(1);
     }
@@ -213,7 +229,66 @@ export async function bootstrap(): Promise<http.Server> {
     console.log(`[api] Canela Coach® escuchando en :${env.port}`);
   });
 
+  registerGracefulShutdown(server);
+
   return server;
+}
+
+const SHUTDOWN_TIMEOUT_MS = 10_000;
+let shuttingDown = false;
+
+function registerGracefulShutdown(server: http.Server): void {
+  const shutdown = async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[shutdown] ${signal} — cerrando en orden (timeout ${SHUTDOWN_TIMEOUT_MS}ms)…`);
+
+    const forceTimer = setTimeout(() => {
+      console.error('[shutdown] timeout — forzando process.exit(1)');
+      process.exit(1);
+    }, SHUTDOWN_TIMEOUT_MS);
+    forceTimer.unref?.();
+
+    try {
+      // 1) Stop accepting new HTTP / Socket.IO connections
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+        try {
+          io?.close();
+        } catch {
+          /* ignore */
+        }
+      });
+      console.log('[shutdown] HTTP/Socket.IO cerrado');
+
+      // 2) Background jobs + worker (stop before DB so in-flight work can finish briefly)
+      stopMembershipStatusJob();
+      stopEvaluationReminderJob();
+      stopReporteWorker();
+      console.log('[shutdown] cron jobs + worker detenidos');
+
+      // 3) Redis then Mongo
+      await disconnectRedis();
+      console.log('[shutdown] Redis cerrado');
+      await disconnectMongo();
+      console.log('[shutdown] Mongo cerrado');
+
+      clearTimeout(forceTimer);
+      console.log('[shutdown] listo');
+      process.exit(0);
+    } catch (err) {
+      console.error('[shutdown] error:', (err as Error).message);
+      clearTimeout(forceTimer);
+      process.exit(1);
+    }
+  };
+
+  process.once('SIGINT', () => {
+    void shutdown('SIGINT');
+  });
+  process.once('SIGTERM', () => {
+    void shutdown('SIGTERM');
+  });
 }
 
 // Vitest imports `app` without listening. tsx/node argv varies — do not rely on path includes 'index'.
