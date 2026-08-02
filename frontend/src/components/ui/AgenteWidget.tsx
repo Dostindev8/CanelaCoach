@@ -126,7 +126,7 @@ export function AgenteWidget() {
         aria-label="Abrir agente IA Canela Coach"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="group fixed bottom-4 right-4 z-50 flex min-h-touch min-w-touch items-center justify-center gap-2 rounded-full border border-accent/40 bg-[#0B1220]/95 px-4 py-3 shadow-[0_0_24px_rgba(12,131,244,0.45)] backdrop-blur-md transition-all duration-micro hover:-translate-y-0.5 hover:shadow-[0_0_32px_rgba(12,131,244,0.55)] sm:bottom-5 sm:right-5"
+        className="group fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-50 flex min-h-touch min-w-touch items-center justify-center gap-2 rounded-full border border-accent/40 bg-[#0B1220]/95 px-4 py-3 shadow-[0_0_24px_rgba(12,131,244,0.45)] backdrop-blur-md transition-all duration-micro hover:-translate-y-0.5 hover:shadow-[0_0_32px_rgba(12,131,244,0.55)] sm:bottom-5 sm:right-5"
       >
         <img
           src="/Canelalogo.webp"
@@ -139,8 +139,9 @@ export function AgenteWidget() {
 
       {open && (
         <div
-          className="fixed inset-x-3 bottom-[4.5rem] z-50 flex max-h-[min(78dvh,640px)] flex-col overflow-hidden rounded-2xl border border-[var(--cc-panel-border)] bg-[rgba(8,14,26,0.96)] shadow-[0_8px_40px_rgba(0,0,0,0.55),0_0_28px_rgba(12,131,244,0.18)] backdrop-blur-xl sm:inset-x-auto sm:bottom-20 sm:right-4 sm:w-[min(100vw-2rem,420px)]"
+          className="fixed inset-0 z-50 flex flex-col overflow-hidden border-[var(--cc-panel-border)] bg-[rgba(8,14,26,0.98)] shadow-[0_8px_40px_rgba(0,0,0,0.55),0_0_28px_rgba(12,131,244,0.18)] backdrop-blur-xl transition duration-micro md:inset-x-auto md:bottom-20 md:right-4 md:top-auto md:h-[min(78dvh,640px)] md:w-[min(100vw-2rem,420px)] md:rounded-2xl md:border"
           role="dialog"
+          aria-modal="true"
           aria-label="Agente Canela Coach"
         >
           <header className="relative border-b border-[var(--cc-panel-border)] bg-gradient-to-r from-[#05070C] via-[#0B1220] to-[#0B1220] px-4 py-3">
@@ -198,12 +199,12 @@ export function AgenteWidget() {
                     Consulta métricas, interpreta evaluaciones y recibe orientación profesional para tus clientes.
                   </p>
                 </div>
-                <div className="flex w-full flex-col gap-2">
+                <div className="flex w-full gap-2 overflow-x-auto pb-1 md:flex-col md:overflow-visible">
                   {SUGGESTIONS.map((s) => (
                     <button
                       key={s}
                       type="button"
-                      className="rounded-xl border border-[var(--cc-panel-border)] bg-white/[0.03] px-3 py-2 text-left text-xs panel-text transition hover:border-accent/40 hover:bg-accent/5"
+                      className="min-w-[85%] shrink-0 rounded-xl border border-[var(--cc-panel-border)] bg-white/[0.03] px-3 py-2 text-left text-xs panel-text transition duration-micro hover:border-accent/40 hover:bg-accent/5 md:min-w-0 md:shrink"
                       onClick={() => setMensaje(s)}
                     >
                       {s}
